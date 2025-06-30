@@ -1,12 +1,7 @@
-from flask import Flask, request
-from dotenv import load_dotenv
 from api_handler import SafeHavenAPI, SupabaseHandler
-import os
-
-# Load environment variables from .env file
-load_dotenv()
 
 # --- Data Lists ---
+# These are used by the handle_ussd function below
 BANKS = [
     {'name': 'Access Bank', 'bank_code': '000014'}, {'name': 'Zenith Bank', 'bank_code': '000015'},
     {'name': 'UBA', 'bank_code': '000004'}, {'name': 'First Bank of Nigeria', 'bank_code': '000016'},
@@ -29,8 +24,6 @@ NETWORKS = [
     {'name': '9mobile', 'serviceCategoryId': '61efacdeda92348f9dde5f9b'}
 ]
 
-# Initialize the Flask app
-app = Flask(__name__)
 
 def get_bank_list_page(page_number, banks_per_page=4):
     """Helper function to create a paginated list of banks for the USSD menu."""
@@ -49,22 +42,25 @@ def get_bank_list_page(page_number, banks_per_page=4):
         
     return response
 
-@app.route("/callback", methods=['POST'])
-def ussd_callback():
+
+def handle_ussd(data):
+    """
+    This function contains all the core logic for the USSD application.
+    It takes the form data from the web request as input.
+    """
     print("--- INCOMING USSD RAW DATA ---")
-    print(request.form)
+    print(data)
 
     db = SupabaseHandler()
     try:
         api = SafeHavenAPI(db)
     except Exception as e:
         print(f"CRITICAL: Failed to initialize SafeHavenAPI. Error: {e}")
-        response = "END Service is temporarily unavailable. Please try again later."
-        return response
+        return "END Service is temporarily unavailable. Please try again later."
 
-    session_id = request.form.get("sessionId")
-    phone_number = request.form.get("phoneNumber")
-    text = request.form.get("text", "")
+    session_id = data.get("sessionId")
+    phone_number = data.get("phoneNumber")
+    text = data.get("text", "")
 
     user = db.get_user_by_phone(phone_number)
     text_parts = text.split('*')
@@ -92,26 +88,33 @@ def ussd_callback():
                 'transfer_recipient_bank_code': None, 'transfer_session_id': None,
                 'transfer_page': None, 'airtime_flow_state': None,
                 'airtime_service_id': None, 'airtime_recipient_number': None,
-                'voucher_flow_state': None
+                'voucher_flow_state': None, 'iyafix_flow_state': None,
+                'iyafix_plan_name': None, 'iyafix_duration': None, 'iyafix_amount': None
             })
             response  = f"CON Welcome back, {account_name}.\n"
             response += "1. Add Funds\n"
             response += "2. Transfer Funds\n"
             response += "3. Buy Airtime\n"
             response += "4. IyaVoucher\n"
-            response += "5. Pay Bills\n"
-            response += "6. Savings\n"
-            response += "7. Health Insurance\n"
-            response += "8. My Account"
+            response += "5. IyaFix\n"
+            response += "6. Pay Bills\n"
+            response += "7. Savings\n"
+            response += "8. Health Insurance\n"
+            response += "9. My Account"
         
         else:
             choice = text_parts[0]
+            print(f"--- EVALUATING MENU CHOICE ---: '{choice}'")
+
             if choice == "2": # Transfer Funds
                 flow_state = user.get('transfer_flow_state')
 
                 if flow_state is None:
-                    db.update_user(phone_number, {'transfer_flow_state': 'AWAITING_RECIPIENT_ACCOUNT'})
-                    response = "CON Enter beneficiary account number:"
+                    update_result = db.update_user(phone_number, {'transfer_flow_state': 'AWAITING_RECIPIENT_ACCOUNT'})
+                    if update_result:
+                        response = "CON Enter beneficiary account number:"
+                    else:
+                        response = "END A database error occurred. Please contact support."
 
                 elif flow_state == 'AWAITING_RECIPIENT_ACCOUNT':
                     recipient_account = text_parts[1]
@@ -199,8 +202,11 @@ def ussd_callback():
                 flow_state = user.get('airtime_flow_state')
 
                 if flow_state is None:
-                    db.update_user(phone_number, {'airtime_flow_state': 'AWAITING_NETWORK'})
-                    response = "CON Select Network:\n1. MTN\n2. GLO\n3. Airtel\n4. 9mobile"
+                    update_result = db.update_user(phone_number, {'airtime_flow_state': 'AWAITING_NETWORK'})
+                    if update_result:
+                        response = "CON Select Network:\n1. MTN\n2. GLO\n3. Airtel\n4. 9mobile"
+                    else:
+                        response = "END A database error occurred. Please contact support."
 
                 elif flow_state == 'AWAITING_NETWORK':
                     network_choice = text_parts[1]
@@ -263,8 +269,11 @@ def ussd_callback():
                 flow_state = user.get('voucher_flow_state')
 
                 if flow_state is None:
-                    db.update_user(phone_number, {'voucher_flow_state': 'AWAITING_VOUCHER_CODE'})
-                    response = "CON Enter your IyaVoucher code:"
+                    update_result = db.update_user(phone_number, {'voucher_flow_state': 'AWAITING_VOUCHER_CODE'})
+                    if update_result:
+                        response = "CON Enter your IyaVoucher code:"
+                    else:
+                        response = "END A database error occurred. Please contact support."
                 
                 elif flow_state == 'AWAITING_VOUCHER_CODE':
                     voucher_code = text_parts[1]
@@ -303,7 +312,56 @@ def ussd_callback():
                     else:
                         response = "END Invalid or already used voucher code."
 
-            elif choice == "8": # My Account (Note the number change)
+            elif choice == "5": # IyaFix
+                flow_state = user.get('iyafix_flow_state')
+
+                if flow_state is None:
+                    update_result = db.update_user(phone_number, {'iyafix_flow_state': 'AWAITING_PLAN_NAME'})
+                    if update_result:
+                        response = "CON Enter a name for your IyaFix plan:"
+                    else:
+                        response = "END A database error occurred. Please contact support."
+
+                elif flow_state == 'AWAITING_PLAN_NAME':
+                    plan_name = text_parts[1]
+                    db.update_user(phone_number, {
+                        'iyafix_plan_name': plan_name,
+                        'iyafix_flow_state': 'AWAITING_DURATION'
+                    })
+                    response = "CON Select duration:\n1. 30 Days\n2. 60 Days\n3. 90 Days\n4. 6 Months"
+
+                elif flow_state == 'AWAITING_DURATION':
+                    duration_choice = text_parts[2]
+                    durations = {"1": "30 Days", "2": "60 Days", "3": "90 Days", "4": "6 Months"}
+                    if duration_choice in durations:
+                        db.update_user(phone_number, {
+                            'iyafix_duration': durations[duration_choice],
+                            'iyafix_flow_state': 'AWAITING_AMOUNT'
+                        })
+                        response = "CON Enter amount to fix:"
+                    else:
+                        response = "END Invalid duration selected."
+
+                elif flow_state == 'AWAITING_AMOUNT':
+                    amount_input = text_parts[3]
+                    if amount_input.isdigit():
+                        amount = int(amount_input)
+                        user_account = user.get('accountNumber')
+                        
+                        fix_result = api.create_virtual_account(user_account, amount)
+                        
+                        if fix_result and fix_result.get('status') == 'success':
+                            db.update_user(phone_number, {
+                                'iyafix_flow_state': None, 'iyafix_plan_name': None,
+                                'iyafix_duration': None, 'iyafix_amount': None
+                            })
+                            response = f"END Your IyaFix plan has been created successfully."
+                        else:
+                            response = "END Could not create your IyaFix plan at this time."
+                    else:
+                        response = "END Invalid amount entered."
+
+            elif choice == "9": # My Account (Note the number change)
                 acc_num = user.get('accountNumber')
                 acc_name = user.get('accountName')
                 balance = user.get('accountBalance', 0)
@@ -404,6 +462,3 @@ def ussd_callback():
 
     print(f"--- SENDING USSD RESPONSE ---\n{response}")
     return response
-
-if __name__ == "__main__":
-    app.run(debug=True, port=5000)

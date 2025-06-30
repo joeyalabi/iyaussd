@@ -29,7 +29,7 @@ NETWORKS = [
     {'name': '9mobile', 'serviceCategoryId': '61efacdeda92348f9dde5f9b'}
 ]
 
-# Initialize the Flask app
+# Initialize the Flask app. This 'app' object is what Vercel looks for.
 app = Flask(__name__)
 
 def get_bank_list_page(page_number, banks_per_page=4):
@@ -49,7 +49,14 @@ def get_bank_list_page(page_number, banks_per_page=4):
         
     return response
 
-@app.route("/callback", methods=['POST'])
+# =============================================================================
+# VERCEL CHANGE:
+# The route is changed from "/callback" to "/".
+# Because this file is at `api/ussd.py`, Vercel routes requests from
+# `your-site.vercel.app/api/ussd` to this file. By setting the route to "/",
+# this function becomes the main handler for that URL.
+# =============================================================================
+@app.route("/", methods=['POST'])
 def ussd_callback():
     print("--- INCOMING USSD RAW DATA ---")
     print(request.form)
@@ -467,5 +474,6 @@ def ussd_callback():
     print(f"--- SENDING USSD RESPONSE ---\n{response}")
     return response
 
+# This part is for local testing only and will be ignored by Vercel.
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

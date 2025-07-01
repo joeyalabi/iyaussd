@@ -1,7 +1,12 @@
+from flask import Flask, request, Response
+from dotenv import load_dotenv
 from api_handler import SafeHavenAPI, SupabaseHandler
+import os
+
+# Load environment variables from .env file
+load_dotenv()
 
 # --- Data Lists ---
-# These are used by the handle_ussd function below
 BANKS = [
     {'name': 'Access Bank', 'bank_code': '000014'}, {'name': 'Zenith Bank', 'bank_code': '000015'},
     {'name': 'UBA', 'bank_code': '000004'}, {'name': 'First Bank of Nigeria', 'bank_code': '000016'},
@@ -24,6 +29,8 @@ NETWORKS = [
     {'name': '9mobile', 'serviceCategoryId': '61efacdeda92348f9dde5f9b'}
 ]
 
+# Initialize the Flask app. Gunicorn will look for this 'app' object.
+app = Flask(__name__)
 
 def get_bank_list_page(page_number, banks_per_page=4):
     """Helper function to create a paginated list of banks for the USSD menu."""
@@ -42,25 +49,23 @@ def get_bank_list_page(page_number, banks_per_page=4):
         
     return response
 
-
-def handle_ussd(data):
-    """
-    This function contains all the core logic for the USSD application.
-    It takes the form data from the web request as input.
-    """
+# This is the main callback route for your USSD service.
+@app.route("/", methods=['POST'])
+def ussd_callback():
     print("--- INCOMING USSD RAW DATA ---")
-    print(data)
+    print(request.form)
 
     db = SupabaseHandler()
     try:
         api = SafeHavenAPI(db)
     except Exception as e:
         print(f"CRITICAL: Failed to initialize SafeHavenAPI. Error: {e}")
-        return "END Service is temporarily unavailable. Please try again later."
+        response = "END Service is temporarily unavailable. Please try again later."
+        return Response(response, mimetype="text/plain")
 
-    session_id = data.get("sessionId")
-    phone_number = data.get("phoneNumber")
-    text = data.get("text", "")
+    session_id = request.form.get("sessionId")
+    phone_number = request.form.get("phoneNumber")
+    text = request.form.get("text", "")
 
     user = db.get_user_by_phone(phone_number)
     text_parts = text.split('*')
@@ -312,7 +317,7 @@ def handle_ussd(data):
                 response = "END Thank you for using IyaPays. This feature is coming soon."
         
         print(f"--- SENDING USSD RESPONSE ---\n{response}")
-        return response
+        return Response(response, mimetype="text/plain")
 
     # ======================================================
     # ===== NEW USER REGISTRATION FLOW =====
@@ -399,4 +404,4 @@ def handle_ussd(data):
         response = "END An error occurred or your session has expired. Please dial the code to start again."
 
     print(f"--- SENDING USSD RESPONSE ---\n{response}")
-    return response
+    return Response(response, mimetype="text/plain")

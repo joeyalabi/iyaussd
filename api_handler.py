@@ -172,3 +172,19 @@ class SafeHavenAPI:
             "phoneNumber": phone_number, "serviceCategoryId": service_category_id
         }
         return self._make_request('POST', endpoint, payload)
+
+    # --- API CALL 7: CREATE VIRTUAL ACCOUNT FOR IYAFIX ---
+    def create_virtual_account(self, user_account_number: str, amount: int):
+        endpoint = "/virtual-accounts"
+        payload = {
+            "validFor": 2100000,
+            "settlementAccount": {
+                "bankCode": "090286",
+                "accountNumber": user_account_number
+            },
+            "amountControl": "Fixed",
+            "amount": amount,
+            "externalReference": str(random.randint(1000, 9999)),
+            "callbackUrl": "https://www.iyapays.com"
+        }
+        return self._make_request('POST', endpoint, payload)

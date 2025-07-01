@@ -2,7 +2,6 @@ from flask import Flask, request
 from dotenv import load_dotenv
 from api_handler import SafeHavenAPI, SupabaseHandler
 import os
-import gunicorn.app.base
 
 # Load environment variables from .env file
 load_dotenv()
@@ -468,23 +467,5 @@ def ussd_callback():
     print(f"--- SENDING USSD RESPONSE ---\n{response}")
     return response
 
-# Gunicorn entry point
-class StandaloneApplication(gunicorn.app.base.BaseApplication):
-    def __init__(self, app, options=None):
-        self.options = options or {}
-        self.application = app
-        super().__init__()
-
-    def load_config(self):
-        for key, value in self.options.items():
-            self.cfg.set(key.lower(), value)
-
-    def load(self):
-        return self.application
-
-if __name__ == '__main__':
-    options = {
-        'bind': '0.0.0.0:5000',
-        'workers': 4,
-    }
-    StandaloneApplication(app, options).run()
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)

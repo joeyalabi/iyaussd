@@ -1,5 +1,6 @@
 from flask import Flask, request, Response
 from dotenv import load_dotenv
+import os
 
 # This line imports the main logic function from your app.py file
 from app import handle_ussd
@@ -10,8 +11,7 @@ load_dotenv()
 # This is the Flask app object that Vercel will run
 app = Flask(__name__)
 
-# This route handles all incoming POST requests to /api/ussd on Vercel,
-# and to the root (/) when running locally.
+# This route handles all incoming POST requests to /api/ussd on Vercel
 @app.route("/", methods=['POST'])
 def ussd_wrapper():
     """
@@ -26,8 +26,3 @@ def ussd_wrapper():
     
     # Return the response to the USSD provider
     return Response(text_response, mimetype="text/plain")
-
-# This block allows the file to be run directly for local testing.
-# Vercel ignores this part.
-if __name__ == "__main__":
-    app.run(debug=True, port=5000)

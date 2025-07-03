@@ -59,6 +59,15 @@ class SupabaseHandler:
         except Exception as e:
             print(f"Error updating token {token_value}: {e}")
             return None
+            
+    def create_plaschema_record(self, record_data: dict):
+        """Creates a new record in the plaschema table."""
+        try:
+            response = self.client.table('plaschema').insert(record_data).execute()
+            return response.data
+        except Exception as e:
+            print(f"Error creating PLASCHEMA record: {e}")
+            return None
 
 
 class SafeHavenAPI:
@@ -85,7 +94,7 @@ class SafeHavenAPI:
             return None
 
     def _make_request(self, method, endpoint, payload=None):
-        """Helper function to make API requests with detailed logging."""
+        """Helper function to make API requests with robust error handling."""
         headers = {
             'Authorization': f'Bearer {self.access_token}',
             'Content-Type': 'application/json',
@@ -109,18 +118,25 @@ class SafeHavenAPI:
             
             response.raise_for_status()
             
-            success_data = response.json()
+            response_data = response.json()
+            
+            if response_data.get('statusCode') != 200:
+                print("\n--- RECEIVED API APPLICATION ERROR ---")
+                print(response_data)
+                print("------------------------------------")
+                return {'status': 'error', 'message': response_data.get('message', 'Unknown API error.')}
+
             print("\n--- RECEIVED API SUCCESS RESPONSE ---")
-            print(success_data)
+            print(response_data)
             print("-----------------------------------")
-            return {'status': 'success', 'data': success_data}
+            return {'status': 'success', 'data': response_data}
 
         except requests.exceptions.RequestException as e:
             error_body = e.response.text if e.response else str(e)
-            print("\n--- RECEIVED API ERROR RESPONSE ---")
+            print("\n--- RECEIVED HTTP/NETWORK ERROR ---")
             print(f"ERROR: {error_body}")
             print("---------------------------------")
-            return {'status': 'error', 'message': error_body}
+            return {'status': 'error', 'message': 'A network error occurred.'}
 
     def initiate_id_verification(self, id_type: str, id_number: str):
         endpoint = "/identity/v2"
@@ -134,7 +150,7 @@ class SafeHavenAPI:
 
     def create_sub_account(self, identity_id: str, phone_number: str):
         def generate_random_email(phone):
-            return f"{phone}{random.randint(100,999)}@iyapays.com"
+            return f"{phone}{random.randint(100,999)}@iyapay.com"
         
         def generate_external_ref():
             return ''.join(random.choices(string.ascii_uppercase, k=4))
@@ -173,14 +189,13 @@ class SafeHavenAPI:
         }
         return self._make_request('POST', endpoint, payload)
 
-    # --- API CALL 7: CREATE VIRTUAL ACCOUNT FOR IYAFIX ---
     def create_virtual_account(self, user_account_number: str, amount: int):
         endpoint = "/virtual-accounts"
         payload = {
-            "validFor": 2100000,
+            "validFor": 72000,
             "settlementAccount": {
                 "bankCode": "090286",
-                "accountNumber": user_account_number
+                "accountNumber": "0118816902"
             },
             "amountControl": "Fixed",
             "amount": amount,
